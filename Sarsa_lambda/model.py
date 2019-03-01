@@ -60,6 +60,43 @@ class SarsaTable(RL):
 
         self.q_table.loc[s,a] += self.lr * (q_target - predict)
 
+class SarsaLambda(RL):
+    def __init__(self, actions, learning_rate=0.01, reward_decay=0.9, e_greedy=0.9,trace_decay=0.9):
+        super(SarsaLambda,self).__init__(actions, learning_rate=learning_rate, reward_decay=reward_decay, e_greedy=e_greedy)
+        self.lambda_ = trace_decay
+        self.eligibility_trace = self.q_table.copy()
+
+    def check_state_exist(self, state):
+        if state not in self.q_table.index:
+            # append new state to q table
+            newState = pd.Series(
+                    [0]*len(self.actions),
+                    index=self.q_table.columns,
+                    name=state,
+                )
+            self.q_table.append(newState)
+
+            #update eligibility table
+            self.eligibility_trace = self.eligibility_trace.append(newState)
+        
+    def learn(self,s,a,r,s_,a_):
+        self.check_state_exist(s_)
+        predict = self.q_table.loc[s,a]
+
+        if s != 'terminal':
+            q_target = r + self.gamma * self.q_table.loc[s_, a_]  # next state is not terminal
+        else:
+            q_target = r
+
+        error = q_target - predict
+
+        self.eligibility_trace.loc[s,:] *=0
+        self.eligibility_trace.loc[s,a] = 1
+        #update Q
+        self.q_table += self.lr * error * self.eligibility_trace
+        #update E
+        self.eligibility_trace *=self.gamma*self.lambda_
+
 def update():
     for episode in range(100):
         # initial observation
@@ -67,7 +104,7 @@ def update():
 
         # RL choose action based on observation
         action = RL.choose_action(str(observation))
-
+        RL.eligibility_trace *= 0
         while True:
             # fresh env
             env.render()
@@ -95,7 +132,8 @@ def update():
 
 if __name__ == "__main__":
     env = Maze()
-    RL = SarsaTable(actions=list(range(env.n_actions)))
+    env.reset()
+    RL = SarsaLambda(actions=list(range(env.n_actions)))
 
     env.after(100, update)
     env.mainloop()
